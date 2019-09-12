@@ -50,9 +50,16 @@ impl L1Repo {
     }
 
     pub fn get_product_url(&self, product_category: &str, target_os: &str) -> Result<url::Url> {
-        let product_category = self.get_product_category(product_category)
-            .ok_or_else(|| Error::InvalidProductCategory(product_category.to_owned(), self.product_categories()))?;
-        product_category.get_product_line_url(&self.source.as_ref().expect("L1 Repo is missing source field."), target_os)
+        let product_category = self.get_product_category(product_category).ok_or_else(|| {
+            Error::InvalidProductCategory(product_category.to_owned(), self.product_categories())
+        })?;
+        product_category.get_product_line_url(
+            &self
+                .source
+                .as_ref()
+                .expect("L1 Repo is missing source field."),
+            target_os,
+        )
     }
 }
 
@@ -81,13 +88,12 @@ impl L1ProductCategory {
     }
 
     pub fn get_product_line(&self, target_os: &str) -> Option<&L1ProductLine> {
-        self.product_lines
-            .iter()
-            .find(|p| p.target_os == target_os)
+        self.product_lines.iter().find(|p| p.target_os == target_os)
     }
 
     pub fn get_product_line_url(&self, base: &url::Url, target_os: &str) -> Result<url::Url> {
-        let product_line = self.get_product_line(target_os)
+        let product_line = self
+            .get_product_line(target_os)
             .ok_or_else(|| Error::InvalidTargetOS(target_os.to_owned(), self.product_lines()))?;
         product_line.get_url(base)
     }

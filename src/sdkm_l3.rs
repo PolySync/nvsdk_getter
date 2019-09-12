@@ -1,9 +1,11 @@
 use crate::error::Error;
 use crate::sdkm;
 use crate::sdkm_l2;
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::convert::TryFrom;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -44,11 +46,29 @@ impl TryFrom<&url::Url> for L3Repo {
 
 impl L3Repo {
     pub fn sections(&self) -> Vec<String> {
-        self.sections.iter().map(|p| p.name.clone()).collect()
+        self.sections.iter().map(|p| p.id.clone()).collect()
     }
 
-    pub fn get_section(&self, name: &str) -> Option<&L3Section> {
-        self.sections.iter().find(|p| p.name == name)
+    pub fn get_section(&self, id: &str) -> Option<&L3Section> {
+        self.sections.iter().find(|p| p.id == id)
+    }
+
+    pub fn get_components_for_section(&self, id: &str) -> HashSet<String> {
+        let mut components: HashSet<String> = HashSet::new();
+        if let Some(section) = self.get_section(id) {
+            components.extend(
+                section
+                    .groups
+                    .iter()
+                    .flat_map(|gr_id| self.get_components_for_group(gr_id).into_iter()),
+            );
+        } else {
+            warn!(
+                "Request for components in section {}, but that section doesn't exist!",
+                id
+            );
+        }
+        components
     }
 
     pub fn groups(&self) -> Vec<String> {
@@ -59,12 +79,58 @@ impl L3Repo {
         self.groups.get(&name.to_owned())
     }
 
+    pub fn get_components_for_group(&self, id: &str) -> HashSet<String> {
+        let mut components: HashSet<String> = HashSet::new();
+        if let Some(group) = self.get_group(id) {
+            if let Some(version) = group.versions.first() {
+                components.extend(version.components.iter().map(|cmp| cmp.id.clone()));
+            }
+            if group.versions.len() > 1 {
+                warn!(
+                    "Multiple versions of group {} available, selecting the first...",
+                    id
+                );
+            }
+        } else {
+            warn!(
+                "Request for components in group {}, but that group doesn't exist!",
+                id
+            );
+        }
+        components
+    }
+
     pub fn components(&self) -> Vec<String> {
         self.components.keys().map(|c| c.to_owned()).collect()
     }
 
-    pub fn get_component(&self, name: &str) -> Option<&L3Component> {
-        self.components.get(&name.to_owned())
+    pub fn get_component(&self, id: &str) -> Option<&L3Component> {
+        self.components.get(&id.to_owned())
+    }
+
+    pub fn get_component_urls(&self, id: &str) -> Vec<url::Url> {
+        let mut urls: Vec<url::Url> = Vec::new();
+        if let Some(component) = self.get_component(id) {
+            if let Some(c_ver) = component.versions.first() {
+                if let Some(source) = &self.source {
+                    urls.extend(
+                        c_ver
+                            .download_files
+                            .iter()
+                            .flat_map(|f| source.join(&f.url)),
+                    );
+                } else {
+                    error!("Source not set on l3 repo!");
+                }
+            }
+            if component.versions.len() > 1 {
+                warn!(
+                    "Multiple versions of component {} available, selecting the first...",
+                    id
+                );
+            }
+        }
+        urls
     }
 }
 
@@ -98,7 +164,6 @@ pub struct L3Section {
     pub displayed: Option<bool>,
     pub groups: Vec<String>,
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]

@@ -14,6 +14,9 @@ pub enum Error {
     MissingRelease(Vec<String>),
     InvalidRelease(String, Vec<String>),
     L2RepoReleaseMissingUrl(String),
+    InvalidSection(String),
+    InvalidGroup(String),
+    InvalidComponent(String),
 }
 
 impl From<flexi_logger::FlexiLoggerError> for Error {

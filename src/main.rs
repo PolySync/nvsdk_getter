@@ -1,9 +1,11 @@
-use log::debug;
+use log::{debug, error};
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
 mod error;
+use error::{Error, Result};
 mod sdkm;
 mod sdkm_config;
 use sdkm_config::SdkmConfig;
@@ -13,7 +15,6 @@ mod sdkm_l2;
 use sdkm_l2::L2Repo;
 mod sdkm_l3;
 use sdkm_l3::L3Repo;
-use crate::error::{Error, Result};
 
 #[derive(Debug, StructOpt)]
 struct Opt {
@@ -31,7 +32,7 @@ struct Opt {
     quiet: bool,
 
     /// Path to the sdkm_config.json file from the SDKManager
-    #[structopt(short, long, parse(from_os_str))]
+    #[structopt(short = "c", long, parse(from_os_str))]
     sdkm_config: PathBuf,
 
     /// Product Category, leave unspecified to see a list options
@@ -45,6 +46,46 @@ struct Opt {
     /// Product Release, leave unspecified to see a list of options
     #[structopt(short, long)]
     release: Option<String>,
+
+    /// List package sections, groups, and components
+    #[structopt(long)]
+    list: bool,
+
+    /// List package sections
+    #[structopt(long)]
+    list_sections: bool,
+
+    /// Show section details
+    #[structopt(long)]
+    section_info: Option<String>,
+
+    /// Package Section to fetch, repeat to enable multiple sections
+    #[structopt(short, long)]
+    section: Vec<String>,
+
+    /// List package groups
+    #[structopt(long)]
+    list_groups: bool,
+
+    /// Show group details
+    #[structopt(long)]
+    group_info: Option<String>,
+
+    /// Package Group to fetch, repeat to enable multiple groups
+    #[structopt(short = "G", long)]
+    group: Vec<String>,
+
+    /// List package components
+    #[structopt(long)]
+    list_components: bool,
+
+    /// Show component details
+    #[structopt(long)]
+    component_info: Option<String>,
+
+    /// Package Component to fetch, repeat to enable multiple components
+    #[structopt(short = "C", long)]
+    component: Vec<String>,
 }
 
 fn get_log_level(opt: &Opt) -> flexi_logger::LevelFilter {
@@ -96,7 +137,9 @@ fn main() -> Result<()> {
         .ok_or_else(|| Error::MissingTargetOS(product_category.product_lines()))?;
     let product_line = product_category
         .get_product_line(&req_target_os)
-        .ok_or_else(|| Error::InvalidTargetOS(req_target_os.clone(), product_category.product_lines()))?;
+        .ok_or_else(|| {
+            Error::InvalidTargetOS(req_target_os.clone(), product_category.product_lines())
+        })?;
     debug!("Target OS: {:?}", product_line);
 
     let l2_rel_url = l1repo.get_product_url(&req_product_category, &req_target_os)?;
@@ -117,6 +160,57 @@ fn main() -> Result<()> {
 
     let l3repo = L3Repo::try_from(&l3_url)?;
     debug!("L3 Repo: {:?}", l3repo);
+
+    if opt.list || opt.list_sections {
+        println!("Package sections:");
+        for section in l3repo.sections() {
+            println!("\t{}", section);
+        }
+    }
+
+    if let Some(section_id) = opt.section_info {
+        let section = l3repo
+            .get_section(&section_id)
+            .ok_or_else(|| Error::InvalidSection(section_id))?;
+        println!("{:?}", section);
+    }
+
+    if opt.list || opt.list_groups {
+        println!("Package groups:");
+        for group in l3repo.groups() {
+            println!("\t{}", group);
+        }
+    }
+
+    if let Some(group_id) = opt.group_info {
+        let group = l3repo
+            .get_group(&group_id)
+            .ok_or_else(|| Error::InvalidGroup(group_id))?;
+        println!("{:?}", group);
+    }
+
+    if opt.list || opt.list_components {
+        println!("Package components:");
+        for component in l3repo.components() {
+            println!("\t{}", component);
+        }
+    }
+
+    if let Some(component_id) = opt.component_info {
+        let component = l3repo
+            .get_component(&component_id)
+            .ok_or_else(|| Error::InvalidComponent(component_id))?;
+        println!("{:?}", component);
+    }
+
+    let mut component_ids: HashSet<String> = opt.component.into_iter().collect();
+    for section in opt.section {
+        component_ids.extend(l3repo.get_components_for_section(&section).into_iter());
+    }
+    for group in opt.group {
+        component_ids.extend(l3repo.get_components_for_group(&group).into_iter());
+    }
+    error!("NOT IMPLEMENTED: packages to fetch... {:?}", component_ids);
 
     Ok(())
 }

@@ -48,7 +48,11 @@ impl L2Repo {
         let release = self
             .get_release(title)
             .ok_or_else(|| Error::InvalidRelease(title.to_owned(), self.releases()))?;
-        release.get_url(self.source.as_ref().expect("L2 Repo is missing source field."))
+        release.get_url(
+            self.source
+                .as_ref()
+                .expect("L2 Repo is missing source field."),
+        )
     }
 }
 
@@ -97,7 +101,12 @@ pub struct L2Release {
 
 impl L2Release {
     pub fn get_url(&self, base: &url::Url) -> Result<url::Url> {
-        base.join(self.comp_repo_url.as_ref().ok_or_else(|| Error::L2RepoReleaseMissingUrl(self.title.clone()))?).map_err(Error::from)
+        base.join(
+            self.comp_repo_url
+                .as_ref()
+                .ok_or_else(|| Error::L2RepoReleaseMissingUrl(self.title.clone()))?,
+        )
+        .map_err(Error::from)
     }
 }
 
