@@ -17,6 +17,14 @@ pub enum Error {
     InvalidSection(String),
     InvalidGroup(String),
     InvalidComponent(String),
+    UnsupportedChecksumType(String),
+    FileNotExist(String),
+    FileDigestInvalid {
+        file: String,
+        cktype: String,
+        expected: String,
+        actual: String,
+    },
 }
 
 impl From<flexi_logger::FlexiLoggerError> for Error {

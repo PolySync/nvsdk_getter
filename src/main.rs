@@ -48,6 +48,11 @@ struct Opt {
     #[structopt(short, long)]
     release: Option<String>,
 
+    /// Cache directory where local copies of packages are kept
+    /// Default is <cache_dir>/nv_getter/<Category>/<TargetOS>/<Release>/
+    #[structopt(short = "d", long, parse(from_os_str))]
+    cache_dir: Option<PathBuf>,
+
     /// Software section, group, and component actions
     #[structopt(subcommand)]
     action: Action,
@@ -126,10 +131,19 @@ fn main() -> Result<()> {
     let l3repo = L3Repo::try_from(&l3_url)?;
     debug!("L3 Repo: {:?}", l3repo);
 
+    // Default is ~/.cache/nv_getter/<Category>/<TargetOS>/<Release>/
+    let cache_dir = opt.cache_dir.unwrap_or_else(|| {
+        let mut dir = dirs::cache_dir().expect("Failed getting local user cache directory");
+        dir.push(env!("CARGO_PKG_NAME"));
+        dir.push(req_product_category);
+        dir.push(req_target_os);
+        dir.push(req_release);
+        dir
+    });
     match &opt.action {
         Action::Show { .. } => show(&l3repo, &opt.action)?,
-        Action::Fetch { .. } => fetch(&l3repo, &opt.action)?,
-        Action::Verify { .. } => verify(&l3repo, &opt.action)?,
+        Action::Fetch { .. } => fetch(&l3repo, &opt.action, &cache_dir)?,
+        Action::Verify { .. } => verify(&l3repo, &opt.action, &cache_dir)?,
     }
 
     Ok(())

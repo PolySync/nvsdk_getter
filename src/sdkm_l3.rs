@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::sdkm;
 use crate::sdkm_l2;
-use log::{error, warn};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -106,31 +106,6 @@ impl L3Repo {
 
     pub fn get_component(&self, id: &str) -> Option<&L3Component> {
         self.components.get(&id.to_owned())
-    }
-
-    pub fn get_component_urls(&self, id: &str) -> Vec<url::Url> {
-        let mut urls: Vec<url::Url> = Vec::new();
-        if let Some(component) = self.get_component(id) {
-            if let Some(c_ver) = component.versions.first() {
-                if let Some(source) = &self.source {
-                    urls.extend(
-                        c_ver
-                            .download_files
-                            .iter()
-                            .flat_map(|f| source.join(&f.url)),
-                    );
-                } else {
-                    error!("Source not set on l3 repo!");
-                }
-            }
-            if component.versions.len() > 1 {
-                warn!(
-                    "Multiple versions of component {} available, selecting the first...",
-                    id
-                );
-            }
-        }
-        urls
     }
 }
 
