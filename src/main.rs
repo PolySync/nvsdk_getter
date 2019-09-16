@@ -1,10 +1,12 @@
-use log::debug;
 use std::convert::TryFrom;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use log::debug;
 use structopt::StructOpt;
 
 mod error;
 use error::{Error, Result};
+mod cache;
 mod sdkm;
 mod sdkm_config;
 use sdkm_config::SdkmConfig;
@@ -132,14 +134,12 @@ fn main() -> Result<()> {
     debug!("L3 Repo: {:?}", l3repo);
 
     // Default is ~/.cache/nv_getter/<Category>/<TargetOS>/<Release>/
-    let cache_dir = opt.cache_dir.unwrap_or_else(|| {
-        let mut dir = dirs::cache_dir().expect("Failed getting local user cache directory");
-        dir.push(env!("CARGO_PKG_NAME"));
-        dir.push(req_product_category);
-        dir.push(req_target_os);
-        dir.push(req_release);
-        dir
-    });
+    let cache_dir: PathBuf = opt.cache_dir.map(Ok).unwrap_or_else(|| {
+        let dir_str = format!("{}/{}/{}", req_product_category, req_target_os, req_release);
+        let dir = Path::new(&dir_str);
+        cache::get_cache_dir(Some(&dir))
+    })?;
+    std::fs::create_dir_all(&cache_dir)?;
     match &opt.action {
         Action::Show { .. } => show(&l3repo, &opt.action)?,
         Action::Fetch { .. } => fetch(&l3repo, &opt.action, &cache_dir)?,

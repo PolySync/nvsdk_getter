@@ -1,10 +1,12 @@
-use log::{error, info, warn, debug};
 use std::collections::HashSet;
+use std::convert::TryInto;
 use std::io::BufRead;
 use std::path::Path;
-use std::convert::TryInto;
+
+use log::{debug, error, info, warn};
 use structopt::StructOpt;
 
+use crate::cache;
 use crate::error::{Error, Result};
 use crate::sdkm_l3::L3Repo;
 
@@ -170,8 +172,10 @@ pub fn show(l3repo: &L3Repo, action_data: &Action) -> Result<()> {
 }
 
 pub fn fetch(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result<()> {
-    let client = reqwest::Client::new();
-    debug!("Creating cache directory {} (if it doesn't already exist)", cache_dir.to_string_lossy().to_string());
+    debug!(
+        "Creating cache directory {} (if it doesn't already exist)",
+        cache_dir.to_string_lossy().to_string()
+    );
     std::fs::create_dir_all(cache_dir).map_err(Error::from)?;
     for component_id in get_component_ids(l3repo, action_data) {
         let component = l3repo
@@ -200,11 +204,8 @@ pub fn fetch(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result<
                     file.file_name,
                     cache_dir.display()
                 );
-                let mut resp = client
-                    .get(remote_file_url.as_str())
-                    .send()
-                    .map_err(Error::from)?;
-                resp.copy_to(&mut out_file).map_err(Error::from)?;
+                let mut in_file = cache::cached_get(remote_file_url.as_str())?;
+                std::io::copy(&mut in_file, &mut out_file)?;
             }
         }
     }
@@ -213,7 +214,7 @@ pub fn fetch(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result<
 
 fn validate_file(filename: &Path, checksum_type: &str, checksum: &str) -> Result<()> {
     if !filename.exists() {
-        Err(Error::FileNotExist(filename.to_string_lossy().to_string()))?;
+        return Err(Error::FileNotExist(filename.to_string_lossy().to_string()));
     }
 
     info!("Verifying file checksum...");
@@ -222,27 +223,26 @@ fn validate_file(filename: &Path, checksum_type: &str, checksum: &str) -> Result
     match checksum_type {
         "md5" => {
             let mut hasher = md5::Context::new();
-            let mut count = 0;
-            let bar = indicatif::ProgressBar::new(file_meta.len());
+            let pbar = indicatif::ProgressBar::new(file_meta.len());
             while !in_file.fill_buf().map_err(Error::from)?.is_empty() {
                 let buf_len = in_file.buffer().len();
                 debug!("Updating checksum from {} bytes...", buf_len);
                 hasher.consume(in_file.buffer());
                 in_file.consume(buf_len);
-                bar.inc(buf_len.try_into().unwrap());
+                pbar.inc(buf_len.try_into().unwrap());
             }
             let digest = hasher.compute();
             let digest_str = format!("{:x}", digest);
             if digest_str != checksum {
-                Err(Error::FileDigestInvalid {
+                return Err(Error::FileDigestInvalid {
                     file: filename.to_string_lossy().to_string(),
                     cktype: checksum_type.to_string(),
                     expected: checksum.to_string(),
                     actual: digest_str,
-                })?;
+                });
             }
         }
-        _ => Err(Error::UnsupportedChecksumType(checksum_type.to_owned()))?,
+        _ => return Err(Error::UnsupportedChecksumType(checksum_type.to_owned())),
     }
     Ok(())
 }
@@ -266,7 +266,7 @@ pub fn verify(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result
                             actual: d,
                         } => error!("INVALID DIGEST: {}[{}] {} != {}", f, ct, d, c),
                         Error::FileNotExist(f) => error!("MISSING FILE:   {} does not exist", f),
-                        _ => Err(e)?,
+                        _ => return Err(e),
                     }
                 } else {
                     info!("VALID:   {}", local_filename.to_string_lossy().to_string());

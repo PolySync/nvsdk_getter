@@ -1,11 +1,17 @@
-use crate::error::Error;
-use crate::sdkm;
-use crate::sdkm_l2;
-use log::warn;
-use serde::{Deserialize, Serialize};
+// Needed to bring in Read trait
+use std::io::Read;
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::TryFrom;
+
+use log::warn;
+use serde::{Deserialize, Serialize};
+
+use crate::cache;
+use crate::error::Error;
+use crate::sdkm;
+use crate::sdkm_l2;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -24,14 +30,13 @@ impl TryFrom<&str> for L3Repo {
     type Error = Error;
 
     fn try_from(url_str: &str) -> std::result::Result<Self, Self::Error> {
-        let mut tmp: Self = serde_json::from_str(
-            &reqwest::get(url_str)
-                .map_err(Error::from)?
-                .text()
-                .map_err(Error::from)?,
-        )
-        .map_err(Error::from)?;
-        tmp.source = Some(url::Url::parse(url_str).map_err(Error::from)?);
+        let mut url_data = String::new();
+        let mut in_file = cache::cached_get(url_str)?;
+        in_file
+            .read_to_string(&mut url_data)
+            .map_err(Self::Error::from)?;
+        let mut tmp: Self = serde_json::from_str(&url_data).map_err(Self::Error::from)?;
+        tmp.source = Some(url::Url::parse(url_str).map_err(Self::Error::from)?);
         Ok(tmp)
     }
 }
