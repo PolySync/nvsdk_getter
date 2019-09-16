@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::convert::TryInto;
 use std::io::BufRead;
+use std::os::unix::fs;
 use std::path::Path;
 
 use log::{debug, error, info, warn};
@@ -195,17 +196,17 @@ pub fn fetch(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result<
                     .expect("Source not set on l3 repo!")
                     .join(&file.url)
                     .map_err(Error::from)?;
-                let mut out_file = std::io::BufWriter::new(
-                    std::fs::File::create(local_filename).map_err(Error::from)?,
-                );
                 info!(
                     "Retrieving {} package {} into {}...",
                     component_id,
                     file.file_name,
                     cache_dir.display()
                 );
-                let mut in_file = cache::cached_get(remote_file_url.as_str())?;
-                std::io::copy(&mut in_file, &mut out_file)?;
+                let cached_file = cache::cached_get_path(remote_file_url.as_str())?;
+                if local_filename.exists() {
+                    std::fs::remove_file(&local_filename).map_err(Error::from)?;
+                }
+                fs::symlink(&cached_file, &local_filename).map_err(Error::from)?;
             }
         }
     }

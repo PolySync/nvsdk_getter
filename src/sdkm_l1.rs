@@ -22,7 +22,7 @@ impl TryFrom<&str> for L1Repo {
 
     fn try_from(url_str: &str) -> std::result::Result<Self, Self::Error> {
         let mut url_data = String::new();
-        let mut in_file = cache::cached_get(url_str)?;
+        let mut in_file = cache::cached_get_reader(url_str)?;
         in_file
             .read_to_string(&mut url_data)
             .map_err(Self::Error::from)?;

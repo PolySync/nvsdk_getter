@@ -2,6 +2,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
+    NumParseError(std::num::ParseIntError),
     Utf8ParseError(std::str::Utf8Error),
     LogError(flexi_logger::FlexiLoggerError),
     IoError(std::io::Error),
@@ -27,6 +28,12 @@ pub enum Error {
         expected: String,
         actual: String,
     },
+}
+
+impl From<std::num::ParseIntError> for Error {
+    fn from(err: std::num::ParseIntError) -> Self {
+        Error::NumParseError(err)
+    }
 }
 
 impl From<std::str::Utf8Error> for Error {
@@ -74,6 +81,7 @@ impl From<url::ParseError> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Error::NumParseError(e) => write!(f, "ERROR: {}", e),
             Error::Utf8ParseError(e) => write!(f, "ERROR: {}", e),
             Error::LogError(e) => write!(f, "ERROR: {}", e),
             Error::IoError(e) => write!(f, "ERROR: {}", e),

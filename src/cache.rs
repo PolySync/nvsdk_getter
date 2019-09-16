@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{offset, DateTime};
 use lazy_static::lazy_static;
-use log::{error, info};
+use log::{error, info, debug};
 use reqwest::header::{CACHE_CONTROL, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -60,13 +60,31 @@ enum CacheControl {
     MustRevalidate,
 }
 
+lazy_static! {
+    // "max-age=604800"
+    static ref MAX_AGE_RE: regex::Regex = regex::Regex::new(r"^max-age=(?P<age>\d+)$").expect("Failed to compile max-age regex.");
+}
+
 impl TryFrom<&str> for CacheControl {
     type Error = Error;
 
     fn try_from(content: &str) -> std::result::Result<Self, Self::Error> {
-        error!("TODO: implement proper cache-control deserialization ({})", content);
-        match content {
-            _ => Ok(CacheControl::MustRevalidate),
+        if let Some(captures) = MAX_AGE_RE.captures(content) {
+            if let Some(age) = captures.name("age").map(|m| m.as_str()) {
+                let now = chrono::offset::Utc::now();
+                let secs: u64 = u64::from_str_radix(age, 10).map_err(Error::from)?;
+                let duration = chrono::Duration::seconds(secs as i64);
+                debug!("Document expires on {} ({} secs from now)", now + duration, secs);
+                Ok(CacheControl::Expires(now + duration))
+            } else {
+                unreachable!();
+            }
+        } else {
+            error!(
+                "TODO: implement proper cache-control deserialization ({})",
+                content
+            );
+            Ok(CacheControl::MustRevalidate)
         }
     }
 }
@@ -93,18 +111,57 @@ fn get_url_cache_dir(url_str: &str) -> Result<PathBuf> {
     get_cache_dir(Some(&http_sub_dir.join(digest)))
 }
 
-fn file_getter(url_str: &str, metadata: &CacheHeaders) -> Result<impl Read> {
+fn get_url_metadata(url_str: &str) -> Result<CacheHeaders> {
+    let url_cache = get_url_cache_dir(url_str)?;
+    let url_cache_meta_path = url_cache.join("cache");
+    let mut metadata = if url_cache_meta_path.exists() {
+        CacheHeaders::try_from(Path::new(&url_cache_meta_path)).map_err(Error::from)?
+    } else {
+        CacheHeaders::new(url_str)
+    };
+
+    match &metadata.cache_control
+    {
+        None => {
+            debug!("No cache information available for {}.", url_str);
+            metadata.etag = None;
+            metadata.last_modified = None;
+        },
+        // Force ignore cache
+        Some(CacheControl::NoStore) => {
+            debug!("Cache disallowed for {}.", url_str);
+            metadata.etag = None;
+            metadata.last_modified = None;
+        }
+        // We're going to ignore max-age and expires (max-age is coerced to an
+        // "Expires" variant), and allow etag and last_modified to be used for validating
+        // whether we're allowed to cache
+        Some(CacheControl::Expires(dt)) if dt >= &chrono::Utc::now() => {
+            debug!("Cache expired for {}.", url_str);
+            debug!("Attempt revalidating cached copy, if available.");
+        }
+        _ => {
+            // Allow using cached data if revalidation succeeds
+            debug!("Cache permitted, pending validation.");
+        }
+    }
+
+    Ok(metadata)
+}
+
+pub fn cached_get_path(url_str: &str) -> Result<PathBuf> {
+    let metadata = get_url_metadata(url_str)?;
     // Construct a request that will either confirm that the cache is valid
     // or provide us with the necessary data
     let mut req = HTTP.get(url_str);
     // Request server verification of cached etag
     if let Some(etag) = &metadata.etag {
-        info!("Url has cached version with etag.");
+        debug!("Url has cached version with etag.");
         req = req.header(IF_NONE_MATCH, etag);
     }
     // Request server verification of cached modification date
     if let Some(modified) = &metadata.last_modified {
-        info!("Url has cached version with \"last modified\" date.");
+        debug!("Url has cached version with \"last modified\" date.");
         req = req.header(IF_MODIFIED_SINCE, modified.as_str());
     }
     let mut resp = req.send().map_err(Error::from)?;
@@ -115,7 +172,7 @@ fn file_getter(url_str: &str, metadata: &CacheHeaders) -> Result<impl Read> {
 
     // New data for us
     if status.is_success() {
-        info!(
+        debug!(
             "No cache or cache invalid for {}, fetching content...",
             url_str
         );
@@ -124,6 +181,9 @@ fn file_getter(url_str: &str, metadata: &CacheHeaders) -> Result<impl Read> {
             std::fs::File::create(url_cache.join("data")).map_err(Error::from)?,
         );
 
+        // TODO: add option for displaying progress bar here?
+        // use content-length header info to set progress size
+        info!("Retrieving requested data from server...");
         resp.copy_to(&mut out_file).map_err(Error::from)?;
 
         // Update cache metadata
@@ -140,21 +200,22 @@ fn file_getter(url_str: &str, metadata: &CacheHeaders) -> Result<impl Read> {
             .transpose()
             .map_err(Error::from)?;
         metadata.cache_control = headers
-            .get(CACHE_CONTROL)
-            .map(|h| {
+            .get_all(CACHE_CONTROL)
+            .iter()
+            .filter_map(|h| {
                 std::str::from_utf8(h.as_bytes())
                     .map_err(Error::from)
                     .and_then(|s| s.try_into())
+                    .ok()
             })
-            .transpose()
-            .map_err(Error::from)?;
+            .next();
         let mut out_file = std::io::BufWriter::new(
             std::fs::File::create(url_cache.join("cache")).map_err(Error::from)?,
         );
         serde_json::to_writer_pretty(&mut out_file, &metadata)?;
     } else if status == StatusCode::NOT_MODIFIED {
         // cached data is valid, use that
-        info!("Using cached copy of {}...", url_str);
+        debug!("Using cached copy of {}...", url_str);
     } else {
         // Some kind of error occurred, for which we can't tell
         // if the cache is valid or not
@@ -165,40 +226,13 @@ fn file_getter(url_str: &str, metadata: &CacheHeaders) -> Result<impl Read> {
         return Err(Error::from(status));
     }
 
-    //  Server reports cached data is still valid
-    Ok(std::io::BufReader::new(
-        std::fs::File::open(url_cache.join("data")).map_err(Error::from)?,
-    ))
+    //  There should now be a locally cached version of the requested url
+    Ok(url_cache.join("data"))
 }
 
-pub fn cached_get(url_str: &str) -> Result<impl Read> {
-    let url_cache = get_url_cache_dir(url_str)?;
-    let url_cache_meta_path = url_cache.join("cache");
-    let mut metadata = if url_cache_meta_path.exists() {
-        CacheHeaders::try_from(Path::new(&url_cache_meta_path)).map_err(Error::from)?
-    } else {
-        CacheHeaders::new(url_str)
-    };
-
-    match metadata
-        .cache_control
-        .clone()
-        .unwrap_or(CacheControl::NoStore)
-    {
-        // Force ignore cache
-        CacheControl::NoStore => {
-            info!("Cache disallowed for {}", url_str);
-            metadata.etag = None;
-            metadata.last_modified = None;
-        }
-        CacheControl::Expires(dt) if dt >= chrono::Utc::now() => {
-            info!("Cache expired for {}", url_str);
-            metadata.etag = None;
-            metadata.last_modified = None;
-        }
-        _ => {
-            // Allow using cached data if revalidation succeeds
-        }
-    }
-    file_getter(url_str, &metadata)
+pub fn cached_get_reader(url_str: &str) -> Result<impl Read> {
+    //  Server reports cached data is still valid
+    Ok(std::io::BufReader::new(
+        std::fs::File::open(cached_get_path(url_str)?).map_err(Error::from)?,
+    ))
 }
