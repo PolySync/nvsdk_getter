@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
+use lazy_static::lazy_static;
 
 use crate::error::Error;
 use crate::sdkm;
@@ -25,5 +26,20 @@ impl TryFrom<&std::path::Path> for SdkmConfig {
             std::fs::File::open(path).map_err(Self::Error::from)?,
         ))
         .map_err(Self::Error::from)
+    }
+}
+
+lazy_static! {
+    // "mainRepoURL": "https://developer.download.nvidia.com/sdkmanager/sdkm-config/main/sdkml1_repo.json"
+    static ref MAIN_REPO_URL: url::Url = url::Url::parse("https://developer.download.nvidia.com/sdkmanager/sdkm-config/main/sdkml1_repo.json").expect("Failed parsing default L1 repo url");
+}
+
+impl std::default::Default for SdkmConfig {
+    fn default() -> Self {
+        Self {
+            main_repo_url: MAIN_REPO_URL.clone(),
+            pid_server: "P".to_string(),
+            dev_zone_server: "P".to_string(),
+        }
     }
 }

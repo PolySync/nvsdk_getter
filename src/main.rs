@@ -36,7 +36,7 @@ struct Opt {
 
     /// Path to the sdkm_config.json file from the SDKManager
     #[structopt(short = "c", long, parse(from_os_str))]
-    sdkm_config: PathBuf,
+    sdkm_config: Option<PathBuf>,
 
     /// Product Category, leave unspecified to see a list options
     #[structopt(short, long)]
@@ -86,7 +86,7 @@ fn main() -> Result<()> {
     .map_err(Error::from)?;
     debug!("Parsed args: {:?}", opt);
 
-    let config = SdkmConfig::try_from(opt.sdkm_config.as_path())?;
+    let config = opt.sdkm_config.map(|c| SdkmConfig::try_from(c.as_path())).transpose()?.unwrap_or_else(|| SdkmConfig::default());
 
     debug!("SDKManager Config: {:?}", config);
 
