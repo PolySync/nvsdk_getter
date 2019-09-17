@@ -183,11 +183,7 @@ pub fn fetch(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result<
             .get_component(&component_id)
             .ok_or_else(|| Error::InvalidComponent(component_id.to_string()))?;
         if let Some(component_ver) = component.versions.first() {
-            info!(
-                "Retrieving {} version {}.",
-                component_id, component_ver.version
-            );
-            warn!("Other versions may be available, but selecting them is not yet supported.");
+            warn!("Using {} v{}. Other versions may be available, but selecting them is not yet supported.", component.id, component_ver.version);
             for file in &component_ver.download_files {
                 let local_filename = cache_dir.join(file.file_name.clone());
                 let remote_file_url = l3repo
