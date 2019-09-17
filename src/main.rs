@@ -1,9 +1,9 @@
 use std::convert::TryFrom;
 use std::path::{Path, PathBuf};
 
+use human_panic::setup_panic;
 use log::debug;
 use structopt::StructOpt;
-use human_panic::setup_panic;
 
 mod error;
 use error::{Error, Result};
@@ -82,7 +82,9 @@ fn main() -> Result<()> {
     setup_panic!();
     let opt = Opt::from_args();
     flexi_logger::Logger::with(
-        flexi_logger::LogSpecification::default(flexi_logger::LevelFilter::Error).module(env!("CARGO_PKG_NAME"), get_log_level(&opt)).build(),
+        flexi_logger::LogSpecification::default(flexi_logger::LevelFilter::Error)
+            .module(env!("CARGO_PKG_NAME"), get_log_level(&opt))
+            .build(),
     )
     .start()
     .map_err(Error::from)?;

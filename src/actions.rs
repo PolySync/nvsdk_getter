@@ -110,9 +110,13 @@ fn get_component_ids(l3repo: &L3Repo, action_data: &Action) -> HashSet<(String, 
     component_ids
         .iter()
         .map(|c| {
+            // Check for a version token
             c.find(':')
+                // split version off from component name
                 .map(|off| c.split_at(off))
+                // convert to String, Some(String)
                 .map(|(a, b)| (a.to_string(), Some(b.to_string())))
+                // No version token, convert to String, None
                 .unwrap_or_else(|| (c.to_string(), None))
         })
         .collect()
@@ -130,12 +134,29 @@ pub fn show(l3repo: &L3Repo, action_data: &Action) -> Result<()> {
 
         println!("Package groups:");
         for group_id in l3repo.groups() {
-            println!("\t{}", group_id);
+            let group = l3repo
+                .get_group(&group_id)
+                .ok_or_else(|| Error::InvalidGroup(group_id.to_string()))?;
+            let mut versions: Vec<String> =
+                group.versions.iter().map(|v| v.version.clone()).collect();
+            versions.sort();
+            versions.dedup();
+            println!("\t{}[{}]", group_id, versions.join(", "));
         }
 
         println!("Package components:");
         for component_id in l3repo.components() {
-            println!("\t{}", component_id);
+            let component = l3repo
+                .get_component(&component_id)
+                .ok_or_else(|| Error::InvalidComponent(component_id.to_string()))?;
+            let mut versions: Vec<String> = component
+                .versions
+                .iter()
+                .map(|v| v.version.clone())
+                .collect();
+            versions.sort();
+            versions.dedup();
+            println!("\t{}[{}]", component_id, versions.join(", "));
         }
     }
 
@@ -208,14 +229,16 @@ pub fn fetch(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result<
                 component_id
             );
         }
-        if let Some(component_ver) = opt_ver
+        for component_ver in opt_ver
             .map(|ver| {
                 component
                     .versions
                     .iter()
-                    .find(|&c_ver| c_ver.version == ver)
+                    .filter(|&c_ver| c_ver.version == ver)
+                    .map(|c_ver| (*c_ver).clone())
+                    .collect()
             })
-            .unwrap_or_else(|| component.versions.first())
+            .unwrap_or_else(|| component.versions.clone())
         {
             for file in &component_ver.download_files {
                 let local_filename = cache_dir.join(file.file_name.clone());
@@ -294,11 +317,10 @@ pub fn verify(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result
                 component
                     .versions
                     .iter()
-                    .find(|&c_ver| c_ver.version == ver)
-                    .ok_or_else(|| Error::InvalidVersionForComponent(ver, component_id))
+                    .filter(|&c_ver| c_ver.version == ver)
+                    .map(|cmp| (*cmp).clone())
+                    .collect()
             })
-            .transpose()?
-            .map(|cmp| vec![(*cmp).clone()])
             .unwrap_or_else(|| component.versions.clone())
         {
             for file in &version.download_files {
