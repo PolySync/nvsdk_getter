@@ -20,10 +20,14 @@ pub enum Action {
         section: Vec<String>,
 
         /// Package group, repeat to specify multiple groups
+        /// To choose a specific version of a group, add ":<version>"
+        /// to the group name.
         #[structopt(short, long)]
         group: Vec<String>,
 
         /// Package component, repeat to specify multiple components
+        /// To choose a specific version of a component, add ":<version>"
+        /// to the component name.
         #[structopt(short, long)]
         component: Vec<String>,
     },
@@ -34,10 +38,14 @@ pub enum Action {
         section: Vec<String>,
 
         /// Package group, repeat to specify multiple groups
+        /// To choose a specific version of a group, add ":<version>"
+        /// to the group name.
         #[structopt(short, long)]
         group: Vec<String>,
 
         /// Package component, repeat to specify multiple components
+        /// To choose a specific version of a component, add ":<version>"
+        /// to the component name.
         #[structopt(short, long)]
         component: Vec<String>,
     },
@@ -48,10 +56,14 @@ pub enum Action {
         section: Vec<String>,
 
         /// Package group, repeat to specify multiple groups
+        /// To choose a specific version of a group, add ":<version>"
+        /// to the group name.
         #[structopt(short, long)]
         group: Vec<String>,
 
         /// Package component, repeat to specify multiple components
+        /// To choose a specific version of a component, add ":<version>"
+        /// to the component name.
         #[structopt(short, long)]
         component: Vec<String>,
     },
@@ -83,7 +95,7 @@ impl Action {
     }
 }
 
-fn get_component_ids(l3repo: &L3Repo, action_data: &Action) -> HashSet<String> {
+fn get_component_ids(l3repo: &L3Repo, action_data: &Action) -> HashSet<(String, Option<String>)> {
     let mut component_ids: HashSet<String> = action_data
         .get_components()
         .iter()
@@ -96,6 +108,14 @@ fn get_component_ids(l3repo: &L3Repo, action_data: &Action) -> HashSet<String> {
         component_ids.extend(l3repo.get_components_for_group(&group).into_iter());
     }
     component_ids
+        .iter()
+        .map(|c| {
+            c.find(':')
+                .map(|off| c.split_at(off))
+                .map(|(a, b)| (a.to_string(), Some(b.to_string())))
+                .unwrap_or_else(|| (c.to_string(), None))
+        })
+        .collect()
 }
 
 pub fn show(l3repo: &L3Repo, action_data: &Action) -> Result<()> {
@@ -178,12 +198,25 @@ pub fn fetch(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result<
         cache_dir.to_string_lossy().to_string()
     );
     std::fs::create_dir_all(cache_dir).map_err(Error::from)?;
-    for component_id in get_component_ids(l3repo, action_data) {
+    for (component_id, opt_ver) in get_component_ids(l3repo, action_data) {
         let component = l3repo
             .get_component(&component_id)
             .ok_or_else(|| Error::InvalidComponent(component_id.to_string()))?;
-        if let Some(component_ver) = component.versions.first() {
-            warn!("Using {} v{}. Other versions may be available, but selecting them is not yet supported.", component.id, component_ver.version);
+        if opt_ver.is_none() && !component.versions.is_empty() {
+            warn!(
+                "No version specified for component {}. Using first available.",
+                component_id
+            );
+        }
+        if let Some(component_ver) = opt_ver
+            .map(|ver| {
+                component
+                    .versions
+                    .iter()
+                    .find(|&c_ver| c_ver.version == ver)
+            })
+            .unwrap_or_else(|| component.versions.first())
+        {
             for file in &component_ver.download_files {
                 let local_filename = cache_dir.join(file.file_name.clone());
                 let remote_file_url = l3repo
@@ -245,12 +278,29 @@ fn validate_file(filename: &Path, checksum_type: &str, checksum: &str) -> Result
 }
 
 pub fn verify(l3repo: &L3Repo, action_data: &Action, cache_dir: &Path) -> Result<()> {
-    for component_id in get_component_ids(l3repo, action_data) {
+    for (component_id, opt_ver) in get_component_ids(l3repo, action_data) {
         let component = l3repo
             .get_component(&component_id)
-            .ok_or_else(|| Error::InvalidComponent(component_id))?;
+            .ok_or_else(|| Error::InvalidComponent(component_id.clone()))?;
 
-        for version in &component.versions {
+        if opt_ver.is_none() && !component.versions.is_empty() {
+            warn!(
+                "No version specified for component {}. Validating all available versions.",
+                component_id
+            );
+        }
+        for version in opt_ver
+            .map(|ver| {
+                component
+                    .versions
+                    .iter()
+                    .find(|&c_ver| c_ver.version == ver)
+                    .ok_or_else(|| Error::InvalidVersionForComponent(ver, component_id))
+            })
+            .transpose()?
+            .map(|cmp| vec![(*cmp).clone()])
+            .unwrap_or_else(|| component.versions.clone())
+        {
             for file in &version.download_files {
                 let local_filename = cache_dir.join(file.file_name.clone());
                 if let Err(e) = validate_file(&local_filename, &file.checksum_type, &file.checksum)

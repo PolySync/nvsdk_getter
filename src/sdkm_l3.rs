@@ -185,7 +185,7 @@ pub struct L3Component {
     pub versions: Vec<L3ComponentVersion>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct L3ComponentVersion {
     pub version: String,
@@ -207,7 +207,7 @@ pub enum L3ComponentDependency {
     Map(HashMap<String, String>),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct L3ComponentVersionDownloadFile {
     pub url: String,
@@ -218,14 +218,14 @@ pub struct L3ComponentVersionDownloadFile {
     pub install_parameters: L3ComponentInstallParameters,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct L3ComponentInstallParameters {
     pub install_type: String,
     pub additional_parameters: L3ComponentAdditionalParameters,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct L3ComponentAdditionalParameters {
     pub packages_info: Option<Vec<HashMap<String, String>>>,

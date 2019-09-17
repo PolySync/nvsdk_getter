@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{offset, DateTime};
 use lazy_static::lazy_static;
-use log::{error, info, debug};
+use log::{debug, error, info};
 use reqwest::header::{CACHE_CONTROL, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -74,7 +74,11 @@ impl TryFrom<&str> for CacheControl {
                 let now = chrono::offset::Utc::now();
                 let secs: u64 = u64::from_str_radix(age, 10).map_err(Error::from)?;
                 let duration = chrono::Duration::seconds(secs as i64);
-                debug!("Document expires on {} ({} secs from now)", now + duration, secs);
+                debug!(
+                    "Document expires on {} ({} secs from now)",
+                    now + duration,
+                    secs
+                );
                 Ok(CacheControl::Expires(now + duration))
             } else {
                 unreachable!();
@@ -120,13 +124,12 @@ fn get_url_metadata(url_str: &str) -> Result<CacheHeaders> {
         CacheHeaders::new(url_str)
     };
 
-    match &metadata.cache_control
-    {
+    match &metadata.cache_control {
         None => {
             debug!("No cache information available for {}.", url_str);
             metadata.etag = None;
             metadata.last_modified = None;
-        },
+        }
         // Force ignore cache
         Some(CacheControl::NoStore) => {
             debug!("Cache disallowed for {}.", url_str);

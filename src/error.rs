@@ -20,6 +20,7 @@ pub enum Error {
     InvalidSection(String),
     InvalidGroup(String),
     InvalidComponent(String),
+    InvalidVersionForComponent(String, String),
     UnsupportedChecksumType(String),
     FileNotExist(String),
     FileDigestInvalid {
@@ -161,6 +162,9 @@ impl std::fmt::Display for Error {
             Error::InvalidGroup(grp) => write!(f, "ERROR: Invalid group specified {}.", grp),
             Error::InvalidComponent(cmp) => {
                 write!(f, "ERROR: Invalid component specified {}.", cmp)
+            }
+            Error::InvalidVersionForComponent(ver, cmp) => {
+                write!(f, "ERROR: Invalid version {} for component {}.", ver, cmp)
             }
             Error::UnsupportedChecksumType(typ) => write!(
                 f,
