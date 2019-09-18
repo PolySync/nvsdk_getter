@@ -19,6 +19,7 @@ mod sdkm_l3;
 use sdkm_l3::L3Repo;
 mod actions;
 use actions::{fetch, show, verify, Action};
+mod caching_client;
 
 #[derive(Debug, StructOpt)]
 struct Opt {
@@ -142,11 +143,11 @@ fn main() -> Result<()> {
     debug!("L3 Repo: {:?}", l3repo);
 
     // Default is ~/.cache/nv_getter/<Category>/<TargetOS>/<Release>/
-    let cache_dir: PathBuf = opt.cache_dir.map(Ok).unwrap_or_else(|| {
+    let cache_dir: PathBuf = opt.cache_dir.unwrap_or_else(|| {
         let dir_str = format!("{}/{}/{}", req_product_category, req_target_os, req_release);
         let dir = Path::new(&dir_str);
         cache::get_cache_dir(Some(&dir))
-    })?;
+    });
     std::fs::create_dir_all(&cache_dir)?;
     match &opt.action {
         Action::Show { .. } => show(&l3repo, &opt.action)?,
