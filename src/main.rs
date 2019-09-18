@@ -53,7 +53,7 @@ struct Opt {
     release: Option<String>,
 
     /// Cache directory where local copies of packages are kept
-    /// Default is <cache_dir>/nv_getter/<Category>/<TargetOS>/<Release>/
+    /// Default is <cache_dir>/nvsdk_getter/<Category>/<TargetOS>/<Release>/
     #[structopt(short = "d", long, parse(from_os_str))]
     cache_dir: Option<PathBuf>,
 
@@ -142,7 +142,7 @@ fn main() -> Result<()> {
     let l3repo = L3Repo::try_from(&l3_url)?;
     debug!("L3 Repo: {:?}", l3repo);
 
-    // Default is ~/.cache/nv_getter/<Category>/<TargetOS>/<Release>/
+    // Default is ~/.cache/nvsdk_getter/<Category>/<TargetOS>/<Release>/
     let cache_dir: PathBuf = opt.cache_dir.unwrap_or_else(|| {
         let dir_str = format!("{}/{}/{}", req_product_category, req_target_os, req_release);
         let dir = Path::new(&dir_str);
