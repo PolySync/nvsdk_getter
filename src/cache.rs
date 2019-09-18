@@ -23,14 +23,22 @@ lazy_static! {
 
 pub fn cached_get_path(url_str: &str) -> Result<PathBuf> {
     let req = HTTP.get(url_str);
-    let mut c_resp =
-        CachedRequestBuilder::new(CacheType::Private, &get_cache_dir(None), req).send(&HTTP)?;
+    let mut c_resp = CachedRequestBuilder::new(
+        CacheType::Private,
+        &get_cache_dir(Some(Path::new("http_cache"))),
+        req,
+    )
+    .send(&HTTP)?;
     c_resp.cached_file_path()
 }
 
 pub fn cached_get_reader(url_str: &str) -> Result<impl Read> {
     let req = HTTP.get(url_str);
-    let mut c_resp =
-        CachedRequestBuilder::new(CacheType::Private, &get_cache_dir(None), req).send(&HTTP)?;
+    let mut c_resp = CachedRequestBuilder::new(
+        CacheType::Private,
+        &get_cache_dir(Some(Path::new("http_cache"))),
+        req,
+    )
+    .send(&HTTP)?;
     c_resp.cached_reader()
 }
